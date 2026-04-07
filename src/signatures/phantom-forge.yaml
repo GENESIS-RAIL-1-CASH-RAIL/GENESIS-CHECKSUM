@@ -12,20 +12,16 @@ host: localhost
 signature_version: 1
 boot_grace_seconds: 120
 
-loops:
-  # The live feed poll is the heartbeat we KNOW works (47K polls overnight)
-  - name: live-feed-poll
-    expected_tick_hz: 1.0
-    tolerance_pct: 30
-  # The wargame engine loop — this is the one that died silently.
-  # Expected to tick at least every 10s.
-  - name: wargame-engine
-    expected_tick_hz: 0.1
-    tolerance_pct: 50
-  # Shadow pipeline flush
-  - name: shadow-pipeline-flush
-    expected_tick_hz: 0.1
-    tolerance_pct: 50
+loops: []
+# NOTE: L2 heartbeat monitoring requires the CHECKSUM agent to be embedded
+# inside Forge so it can call agent.tick(loopName) from inside loop bodies.
+# Forge does NOT yet have the agent wired in (v0.2 backlog: "wire CHECKSUM
+# agent into GENESIS-PHANTOM-FORGE loops"). Until then we rely on L1 (process
+# poll) + L3 (counter delta polling) to monitor Forge — both of which are
+# sufficient because the L3 counters DIRECTLY measure whether the loops are
+# producing work. If the live-feed-poll loop dies, totalConsumed stops
+# incrementing. If the wargame loop dies, totalScenarios stops incrementing.
+# L3 catches the symptom; L2 would catch the cause. Symptom is enough until v0.2.
 
 counters:
   # Live feed must be ingesting
