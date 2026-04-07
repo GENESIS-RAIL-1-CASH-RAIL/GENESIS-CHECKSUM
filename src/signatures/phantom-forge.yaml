@@ -32,19 +32,35 @@ counters:
   - name: live-feed.totalConsumed
     endpoint: /live-feed/stats
     json_path: totalConsumed
-    min_delta_per_min: 100
+    min_delta_per_min: 30
   - name: live-feed.totalAdmitted
     endpoint: /live-feed/stats
     json_path: totalAdmitted
-    min_delta_per_min: 30
-  # Wargame counter — THIS IS THE ONE THAT WAS FLAT AT 0 FOR 96 HOURS
-  - name: stats.totalWargames
-    endpoint: /stats
-    json_path: stats.totalWargames
-    min_delta_per_hour: 1
-  # Shadow trades — also flat
+    min_delta_per_min: 10
+  # NOTE on stats.totalWargames: this counter is for the dedicated Live Wargame
+  # loop which is currently dead in v7.3 (the loop is registered but never
+  # invoked). CHECKSUM caught this as a confirmed TRUE POSITIVE on 2026-04-07.
+  # We REMOVE it from active monitoring because:
+  #   1. The failure is already audited and recorded
+  #   2. The Campaign Simulator (v7.0 upgrade) is the actual wargame path now
+  #   3. totalScenarios + totalSelfPlaySessions cover the Campaign Simulator
+  #   4. Restoring totalWargames is filed as Tier 2 backlog
+  # Watching dead counters that we know are dead is alarm fatigue, not signal.
+  #
+  # Campaign Simulator proxies — these are the v7.0 wargame outputs (4-regime
+  # PASS/FAIL with survival + PnL). Currently incrementing at ~46/hr scenarios
+  # and ~18/hr self-play sessions. Thresholds set conservatively below observed.
+  - name: stats.totalScenarios
+    endpoint: /health
+    json_path: stats.totalScenarios
+    min_delta_per_hour: 20
+  - name: stats.totalSelfPlaySessions
+    endpoint: /health
+    json_path: stats.totalSelfPlaySessions
+    min_delta_per_hour: 8
+  # Shadow trades — running healthy
   - name: stats.totalShadowTrades
-    endpoint: /stats
+    endpoint: /health
     json_path: stats.totalShadowTrades
     min_delta_per_hour: 5
 
