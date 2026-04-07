@@ -1,0 +1,38 @@
+# GENESIS-TRIBUNAL behavioural signature for CHECKSUM v0.2
+# Drops into GENESIS-CHECKSUM/src/signatures/ alongside phantom-forge.yaml + overwatch.yaml
+# Catches the same class of failure that bit Forge: process up but loops dead.
+# Bound by ARIS Decree 222 (CHECKSUM Promotion Gate) + ARIS Decree 223 (Tribunal voting).
+
+service: GENESIS-TRIBUNAL
+port: 8910
+host: localhost
+signature_version: 1
+boot_grace_seconds: 60
+
+loops:
+  - name: tribunal-vote-tick
+    expected_tick_hz: 0.05  # ~1 vote per 20s under typical load (will be much lower with ARIS pre-filter)
+    tolerance_pct: 80
+  - name: budget-meter-tick
+    expected_tick_hz: 0.0167  # every 60s
+    tolerance_pct: 50
+  - name: flywheel-monthly-tick
+    expected_tick_hz: 0.0000004  # once per 30 days, very loose
+    tolerance_pct: 100
+
+counters:
+  - name: voting.totalVotes
+    endpoint: /tribunal/state
+    json_path: voting.totalVotes
+    min_delta_per_hour: 0  # can be quiet, ARIS handles 95%+ via precedents
+  - name: voting.totalApproved
+    endpoint: /tribunal/state
+    json_path: voting.totalApproved
+    min_delta_per_hour: 0
+  - name: budget.spentTodayGbp
+    endpoint: /tribunal/state
+    json_path: budget.spentTodayGbp
+    min_delta_per_hour: 0  # may be £0 on quiet days
+
+# E2E probe deferred to v0.2 — needs synthetic opportunity injection endpoint
+e2e: []
