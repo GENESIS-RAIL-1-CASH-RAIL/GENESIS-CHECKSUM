@@ -12,6 +12,7 @@ import { DeltaService } from "./delta.service";
 import { VerifierService } from "./verifier.service";
 import { EscalationService } from "./escalation.service";
 import { DeadmanService } from "./deadman.service";
+import { PromotionService } from "./promotion.service";
 import { TickEvent } from "./types";
 
 const PORT = Number(process.env.CHECKSUM_PORT ?? 8898);
@@ -27,6 +28,7 @@ const heartbeat = new HeartbeatService(registry);
 const delta = new DeltaService(registry);
 const verifier = new VerifierService(registry, escalation);
 const deadman = new DeadmanService(DEADMAN_HOST, DEADMAN_PORT);
+const promotion = new PromotionService();
 
 // --- load signatures ---
 const loaded = registry.loadSignaturesFromDir(SIG_DIR);
@@ -112,18 +114,119 @@ app.get("/checksum/deadman/last", (_req, res) => {
 });
 
 // Mode toggle (alert-only vs autonomous). Defaults to ALERT_ONLY.
+// HARD MACHINE BLOCK: AUTONOMOUS requires promotion gate satisfied.
+// Bound by ARIS Decree 222.
 app.post("/checksum/mode/:mode", (req, res) => {
   const m = req.params.mode.toUpperCase();
   if (m !== "ALERT_ONLY" && m !== "AUTONOMOUS") {
     return res.status(400).json({ ok: false, error: "mode must be ALERT_ONLY or AUTONOMOUS" });
   }
+  if (m === "AUTONOMOUS") {
+    const gate = promotion.canPromote();
+    if (!gate.allowed) {
+      return res.status(403).json({
+        ok: false,
+        error: "PROMOTION_GATE_NOT_SATISFIED",
+        message: "ARIS Decree 222: CHECKSUM autonomous promotion requires machine-verified gate satisfaction.",
+        blocking_reasons: gate.reasons,
+        override_endpoint: "POST /checksum/mode/AUTONOMOUS/force with body {reason: string} — leaves permanent audit trail",
+      });
+    }
+  }
   escalation.setMode(m as any);
   res.json({ ok: true, mode: m });
 });
 
+// Force-promote with audit trail. Last resort. ARIS-tracked override.
+app.post("/checksum/mode/AUTONOMOUS/force", (req, res) => {
+  const reason = (req.body && typeof req.body.reason === "string") ? req.body.reason : null;
+  if (!reason || reason.length < 10) {
+    return res.status(400).json({
+      ok: false,
+      error: "FORCE_OVERRIDE_REQUIRES_REASON",
+      message: "Body must include {reason: string} with at least 10 characters. This will leave a permanent audit record.",
+    });
+  }
+  promotion.recordManualOverride(reason);
+  escalation.setMode("AUTONOMOUS");
+  res.json({
+    ok: true,
+    mode: "AUTONOMOUS",
+    warning: "MANUAL OVERRIDE RECORDED — ARIS audit trail written. Reason: " + reason,
+  });
+});
+
+// Promotion readiness — what Goodnight Protocol queries every night
+app.get("/checksum/promotion-readiness", (_req, res) => {
+  const s = promotion.read();
+  res.json({
+    ok: true,
+    ready: s.ready,
+    ready_since: s.ready_since_ts ? new Date(s.ready_since_ts).toISOString() : null,
+    blocking_reasons: s.blocking_reasons,
+    metrics: {
+      total_uptime_days: s.total_uptime_days,
+      days_since_last_fp: s.days_since_last_fp,
+      false_positive_count_total: s.false_positive_count_total,
+      true_positive_count: s.true_positive_count,
+      deadman_test_count: s.deadman_test_count,
+      last_deadman_test: s.last_deadman_test_ts ? new Date(s.last_deadman_test_ts).toISOString() : null,
+    },
+    manual_overrides: s.manual_overrides,
+    decree: "ARIS Decree 222",
+  });
+});
+
+// Mark a transition as a false positive (resets the 7-day clock)
+app.post("/checksum/audit/mark-false-positive", (req, res) => {
+  const reason = (req.body && typeof req.body.reason === "string") ? req.body.reason : "marked by Commander";
+  promotion.markFalsePositive(reason);
+  res.json({ ok: true, message: "FP recorded, 7-day clock RESET", state: promotion.read() });
+});
+
+// Mark a transition as a true positive (counts toward gate)
+app.post("/checksum/audit/mark-true-positive", (req, res) => {
+  const reason = (req.body && typeof req.body.reason === "string") ? req.body.reason : "marked by Commander";
+  promotion.markTruePositive(reason);
+  res.json({ ok: true, message: "TP recorded", state: promotion.read() });
+});
+
+// Run a controlled dead-man test. Stops outbound heartbeats for 95s, observes whether
+// the external dead-man triggers correctly. Records test on success.
+app.post("/checksum/test/deadman", async (_req, res) => {
+  console.log(`[test] DEAD-MAN TEST initiated by Commander`);
+  // We can't actually pause our own setInterval easily without restructure;
+  // for v0.2 we mark intent and the operator validates externally that the dead-man triggered.
+  // True automated test deferred to v0.3 (would require pausing the deadman.beat() interval).
+  // For now: record the intent, Commander validates dead-man fired, then POSTs result.
+  res.json({
+    ok: true,
+    message: "Dead-man test initiated. Stop outbound heartbeats manually for 95s, verify dead-man fires CHARLIE alert, then POST /checksum/test/deadman/result {success: true}",
+    instructions: [
+      "1. Note current time",
+      "2. Stop CHECKSUM process (kill -STOP <pid>) for 100 seconds",
+      "3. Verify dead-man at :8899/deadman/status shows triggered=true",
+      "4. Resume CHECKSUM (kill -CONT <pid>)",
+      "5. POST /checksum/test/deadman/result with {success: true|false}",
+    ],
+  });
+});
+
+app.post("/checksum/test/deadman/result", (req, res) => {
+  const success = req.body && req.body.success === true;
+  promotion.recordDeadmanTest(success);
+  res.json({ ok: true, recorded: success, state: promotion.read() });
+});
+
 app.listen(PORT, () => {
-  console.log(`[checksum] GENESIS-CHECKSUM v0.1 listening on :${PORT}`);
+  console.log(`[checksum] GENESIS-CHECKSUM v0.2 listening on :${PORT}`);
   console.log(`[checksum] mode: ALERT_ONLY (no autonomous halts)`);
   console.log(`[checksum] signatures: ${loaded}`);
   console.log(`[checksum] dead-man: ${DEADMAN_HOST}:${DEADMAN_PORT}`);
+  const p = promotion.read();
+  console.log(`[checksum] promotion gate: ${p.ready ? "READY" : "BLOCKED"}`);
+  if (!p.ready) {
+    for (const r of p.blocking_reasons) console.log(`[checksum]   - ${r}`);
+  }
+  console.log(`[checksum] bound by ARIS Decree 222`);
 });
