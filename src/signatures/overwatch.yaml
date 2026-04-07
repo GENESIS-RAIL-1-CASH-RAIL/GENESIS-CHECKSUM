@@ -1,0 +1,37 @@
+# GENESIS-OVERWATCH behavioural signature for CHECKSUM v0.2
+# Drops into GENESIS-CHECKSUM/src/signatures/ alongside phantom-forge.yaml
+# Catches the same class of failure that bit Forge: process up but loops dead.
+
+service: GENESIS-OVERWATCH
+port: 8902
+host: localhost
+signature_version: 1
+boot_grace_seconds: 60
+
+loops:
+  - name: fusion-tick
+    expected_tick_hz: 0.5  # every 2s
+    tolerance_pct: 30
+  - name: meter-tick
+    expected_tick_hz: 0.0167  # every 60s
+    tolerance_pct: 50
+  - name: safe-extract-sweep
+    expected_tick_hz: 0.2  # every 5s
+    tolerance_pct: 30
+
+counters:
+  - name: fusion.totalEnrichedPackets
+    endpoint: /overwatch/state
+    json_path: fusion.totalEnrichedPackets
+    min_delta_per_min: 1   # at least one fusion result per minute under load
+  - name: harvest.totalSignalsCaptured
+    endpoint: /overwatch/harvest/stats
+    json_path: totalSignalsCaptured
+    min_delta_per_min: 5
+  - name: mev.totalEvaluations
+    endpoint: /overwatch/mev/state
+    json_path: totalEvaluations
+    min_delta_per_min: 1
+
+# E2E probe deferred to v0.2 — needs synthetic evidence injection endpoint
+e2e: []
