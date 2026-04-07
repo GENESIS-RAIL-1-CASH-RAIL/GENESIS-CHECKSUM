@@ -1,0 +1,52 @@
+# GENESIS-PHANTOM-FORGE behavioural signature
+# Hand-defined from observed Forge v7.3.0 behaviour and known internal loops.
+# 2026-04-07 — written in response to silent failure where wargame loop died
+# but /health and process stayed up.
+#
+# This signature WOULD have caught this morning's bug at L2 (wargame_engine
+# loop tick missing for hours) and L3 (totalWargames flat at 0 for 96 hours).
+
+service: GENESIS-PHANTOM-FORGE
+port: 8856
+host: localhost
+signature_version: 1
+boot_grace_seconds: 120
+
+loops:
+  # The live feed poll is the heartbeat we KNOW works (47K polls overnight)
+  - name: live-feed-poll
+    expected_tick_hz: 1.0
+    tolerance_pct: 30
+  # The wargame engine loop — this is the one that died silently.
+  # Expected to tick at least every 10s.
+  - name: wargame-engine
+    expected_tick_hz: 0.1
+    tolerance_pct: 50
+  # Shadow pipeline flush
+  - name: shadow-pipeline-flush
+    expected_tick_hz: 0.1
+    tolerance_pct: 50
+
+counters:
+  # Live feed must be ingesting
+  - name: live-feed.totalConsumed
+    endpoint: /live-feed/stats
+    json_path: totalConsumed
+    min_delta_per_min: 100
+  - name: live-feed.totalAdmitted
+    endpoint: /live-feed/stats
+    json_path: totalAdmitted
+    min_delta_per_min: 30
+  # Wargame counter — THIS IS THE ONE THAT WAS FLAT AT 0 FOR 96 HOURS
+  - name: stats.totalWargames
+    endpoint: /stats
+    json_path: stats.totalWargames
+    min_delta_per_hour: 1
+  # Shadow trades — also flat
+  - name: stats.totalShadowTrades
+    endpoint: /stats
+    json_path: stats.totalShadowTrades
+    min_delta_per_hour: 5
+
+# E2E probes deferred to v0.2 — Forge needs a /shadow/probe/inject endpoint first
+e2e: []
