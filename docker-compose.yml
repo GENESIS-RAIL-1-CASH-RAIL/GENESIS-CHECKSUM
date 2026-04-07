@@ -1,19 +1,24 @@
 services:
+  # Main CHECKSUM service uses host network because its job is to poll
+  # other Genesis services running on the host (Forge:8856, OVERWATCH:8902,
+  # TRIBUNAL:8910). With bridge networking, "localhost" inside the container
+  # would resolve to the container itself, not the host.
   genesis-checksum:
     build: .
     container_name: genesis-checksum
-    ports:
-      - "8898:8898"
+    network_mode: host
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DEADMAN_HOST=genesis-checksum-deadman
+      - CHECKSUM_PORT=8898
+      - DEADMAN_HOST=localhost
       - DEADMAN_PORT=8899
     depends_on:
       - genesis-checksum-deadman
-    networks:
-      - checksum-net
 
+  # Dead-man stays isolated in its own bridge network — it just receives
+  # heartbeats and serves /deadman/status. CHECKSUM (in host mode) reaches
+  # it via host port 8899 (mapped from container 8899).
   genesis-checksum-deadman:
     image: node:20-alpine
     container_name: genesis-checksum-deadman
@@ -26,9 +31,3 @@ services:
     restart: unless-stopped
     environment:
       - DEADMAN_PORT=8899
-    networks:
-      - checksum-net
-
-networks:
-  checksum-net:
-    driver: bridge
