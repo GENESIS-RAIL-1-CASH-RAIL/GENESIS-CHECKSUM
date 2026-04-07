@@ -1,0 +1,34 @@
+services:
+  genesis-checksum:
+    build: .
+    container_name: genesis-checksum
+    ports:
+      - "8898:8898"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DEADMAN_HOST=genesis-checksum-deadman
+      - DEADMAN_PORT=8899
+    depends_on:
+      - genesis-checksum-deadman
+    networks:
+      - checksum-net
+
+  genesis-checksum-deadman:
+    image: node:20-alpine
+    container_name: genesis-checksum-deadman
+    working_dir: /app
+    volumes:
+      - ./deadman:/app/deadman:ro
+    command: ["node", "/app/deadman/deadman.js"]
+    ports:
+      - "8899:8899"
+    restart: unless-stopped
+    environment:
+      - DEADMAN_PORT=8899
+    networks:
+      - checksum-net
+
+networks:
+  checksum-net:
+    driver: bridge
