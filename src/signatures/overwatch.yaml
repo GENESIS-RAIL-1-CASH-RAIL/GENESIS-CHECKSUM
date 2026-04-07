@@ -1,37 +1,44 @@
-# GENESIS-OVERWATCH behavioural signature for CHECKSUM v0.2
+# GENESIS-OVERWATCH behavioural signature for CHECKSUM
 # Drops into GENESIS-CHECKSUM/src/signatures/ alongside phantom-forge.yaml
-# Catches the same class of failure that bit Forge: process up but loops dead.
+#
+# 2026-04-07 evening — REDUCED TO L1-ONLY until upstream wire-ups land.
+# Same pragmatic decision we made for Forge L2 tonight: do not monitor what
+# is structurally guaranteed to be silent, because every alarm cycle would
+# be a false positive that resets CHECKSUM Promotion Gate Cond 1 (zero FP
+# for 7 days). Alarm fatigue = signal destruction.
 
 service: GENESIS-OVERWATCH
 port: 8902
 host: localhost
-signature_version: 1
+signature_version: 2
 boot_grace_seconds: 60
 
-loops:
-  - name: fusion-tick
-    expected_tick_hz: 0.5  # every 2s
-    tolerance_pct: 30
-  - name: meter-tick
-    expected_tick_hz: 0.0167  # every 60s
-    tolerance_pct: 50
-  - name: safe-extract-sweep
-    expected_tick_hz: 0.2  # every 5s
-    tolerance_pct: 30
+# L2 loops: REMOVED until CHECKSUM agent is embedded inside OVERWATCH loop
+# bodies (Tier 1 backlog: "Embed CHECKSUM agent into OVERWATCH + TRIBUNAL").
+# Without the embedded agent, agent.tick(loopName) is never called and every
+# expected_tick_hz check fires a false positive forever.
+loops: []
 
-counters:
-  - name: fusion.totalEnrichedPackets
-    endpoint: /overwatch/state
-    json_path: fusion.totalEnrichedPackets
-    min_delta_per_min: 1   # at least one fusion result per minute under load
-  - name: harvest.totalSignalsCaptured
-    endpoint: /overwatch/harvest/stats
-    json_path: totalSignalsCaptured
-    min_delta_per_min: 5
-  - name: mev.totalEvaluations
-    endpoint: /overwatch/mev/state
-    json_path: totalEvaluations
-    min_delta_per_min: 1
+# L3 counters: REMOVED until embedded agents in *other* Genesis services
+# start POSTing /overwatch/telemetry. OVERWATCH is a fusion service — it has
+# nothing to fuse until upstream services feed it. Real endpoints exist and
+# the json_paths below were verified correct against /overwatch/state, but
+# the counters will sit at 0 until the upstream pipeline is wired.
+#
+# When OVERWATCH starts receiving telemetry, restore these:
+#   - name: fusion.totalEnrichedPackets
+#     endpoint: /overwatch/state
+#     json_path: fusion.totalEnrichedPackets
+#     min_delta_per_min: 1
+#   - name: harvest.totalSignalsCaptured
+#     endpoint: /overwatch/harvest/stats
+#     json_path: totalSignalsCaptured
+#     min_delta_per_min: 5
+#   - name: mev.totalEvaluations
+#     endpoint: /overwatch/mev/state
+#     json_path: totalEvaluations
+#     min_delta_per_min: 1
+counters: []
 
 # E2E probe deferred to v0.2 — needs synthetic evidence injection endpoint
 e2e: []

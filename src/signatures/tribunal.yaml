@@ -1,38 +1,42 @@
-# GENESIS-TRIBUNAL behavioural signature for CHECKSUM v0.2
+# GENESIS-TRIBUNAL behavioural signature for CHECKSUM
 # Drops into GENESIS-CHECKSUM/src/signatures/ alongside phantom-forge.yaml + overwatch.yaml
-# Catches the same class of failure that bit Forge: process up but loops dead.
 # Bound by ARIS Decree 222 (CHECKSUM Promotion Gate) + ARIS Decree 223 (Tribunal voting).
+#
+# 2026-04-07 evening — REDUCED TO L1-ONLY until upstream wire-ups land.
+# Same pragmatic decision we made for Forge L2 and OVERWATCH tonight: do not
+# monitor what is structurally guaranteed to be silent. Every alarm would be
+# a false positive that resets Promotion Gate Cond 1 (zero FP for 7 days).
 
 service: GENESIS-TRIBUNAL
 port: 8910
 host: localhost
-signature_version: 1
+signature_version: 2
 boot_grace_seconds: 60
 
-loops:
-  - name: tribunal-vote-tick
-    expected_tick_hz: 0.05  # ~1 vote per 20s under typical load (will be much lower with ARIS pre-filter)
-    tolerance_pct: 80
-  - name: budget-meter-tick
-    expected_tick_hz: 0.0167  # every 60s
-    tolerance_pct: 50
-  - name: flywheel-monthly-tick
-    expected_tick_hz: 0.0000004  # once per 30 days, very loose
-    tolerance_pct: 100
+# L2 loops: REMOVED until CHECKSUM agent is embedded inside TRIBUNAL loop
+# bodies (Tier 1 backlog: "Embed CHECKSUM agent into OVERWATCH + TRIBUNAL").
+loops: []
 
-counters:
-  - name: voting.totalVotes
-    endpoint: /tribunal/state
-    json_path: voting.totalVotes
-    min_delta_per_hour: 0  # can be quiet, ARIS handles 95%+ via precedents
-  - name: voting.totalApproved
-    endpoint: /tribunal/state
-    json_path: voting.totalApproved
-    min_delta_per_hour: 0
-  - name: budget.spentTodayGbp
-    endpoint: /tribunal/state
-    json_path: budget.spentTodayGbp
-    min_delta_per_hour: 0  # may be £0 on quiet days
+# L3 counters: REMOVED until ARIS actually routes high-risk queries to
+# Tribunal. Two upstream gates need to land first:
+#   1. TRIBUNAL_ARIS_HMAC_KEY env var set on Server A (Tier 1 backlog)
+#   2. ARIS routing wired so escalations reach /tribunal/vote
+# Until then voting.totalVotes sits at 0 forever and alarms are false positives.
+#
+# When ARIS->Tribunal routing is live, restore these:
+#   - name: voting.totalVotes
+#     endpoint: /tribunal/state
+#     json_path: voting.totalVotes
+#     min_delta_per_hour: 1   # any vote at all = healthy
+#   - name: voting.totalApproved
+#     endpoint: /tribunal/state
+#     json_path: voting.totalApproved
+#     min_delta_per_hour: 0   # may legitimately be 0 if all HOLD
+#   - name: budget.spentTodayGbp
+#     endpoint: /tribunal/state
+#     json_path: budget.spentTodayGbp
+#     min_delta_per_hour: 0   # may legitimately be 0 on quiet days
+counters: []
 
 # E2E probe deferred to v0.2 — needs synthetic opportunity injection endpoint
 e2e: []
