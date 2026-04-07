@@ -13,6 +13,11 @@ services:
       - CHECKSUM_PORT=8898
       - DEADMAN_HOST=localhost
       - DEADMAN_PORT=8899
+      # Promotion gate state path -> volume-mounted directory
+      # so TPs, dead-man tests, FP counts, uptime survive container rebuilds
+      - CHECKSUM_STATE_PATH=/state/checksum-state.json
+    volumes:
+      - checksum-state:/state
     depends_on:
       - genesis-checksum-deadman
 
@@ -31,3 +36,11 @@ services:
     restart: unless-stopped
     environment:
       - DEADMAN_PORT=8899
+
+volumes:
+  # Persists CHECKSUM promotion gate state across container rebuilds.
+  # Without this, every `docker compose up --build` wipes TP count, dead-man
+  # test count, and uptime tracking. Build It Once doctrine: state is data,
+  # data must survive infrastructure changes.
+  checksum-state:
+    driver: local

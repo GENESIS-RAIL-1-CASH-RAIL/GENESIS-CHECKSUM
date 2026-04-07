@@ -43,7 +43,17 @@ export class PromotionService {
   private readonly minDays = 7;
 
   constructor(storePath?: string) {
-    this.storePath = storePath ?? path.join(process.env.HOME ?? "/tmp", ".checksum-state.json");
+    // Resolution order:
+    //   1. explicit constructor arg (for tests)
+    //   2. CHECKSUM_STATE_PATH env var (for production — points to a volume-mounted file)
+    //   3. $HOME/.checksum-state.json fallback (for local dev)
+    // The env var path is the production pattern: docker-compose mounts a named
+    // volume to /state and sets CHECKSUM_STATE_PATH=/state/checksum-state.json so
+    // promotion gate progress survives container rebuilds.
+    this.storePath =
+      storePath ??
+      process.env.CHECKSUM_STATE_PATH ??
+      path.join(process.env.HOME ?? "/tmp", ".checksum-state.json");
     this.state = this.load();
     // Persist immediately so first run writes a baseline
     this.persist();
