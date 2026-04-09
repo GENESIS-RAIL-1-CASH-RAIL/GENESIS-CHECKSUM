@@ -1,0 +1,116 @@
+# GENESIS Ingestor Fleet behavioural signature
+# INTEL BACKBONE monitoring — if the fleet dies silently, the entire stack starves
+# 2026-04-09 — written in response to Bitstamp 3-day silent failure
+# L1: Aggregate gate polling (60s) + flow thresholds
+# L3: Individual ingestor liveness (300s) + fleet-wide degradation
+
+service: GENESIS-INGESTOR-FLEET
+port: 8700
+host: localhost
+signature_version: 1
+boot_grace_seconds: 60
+
+loops: []
+
+counters:
+  # L1 GATE AGGREGATE: Overall data flow health
+  # If totalEventsLastHour == 0 for 5min, all ingestors are dead.
+  # If totalEventsLastHour < 100 for 10min, severe fleet degradation.
+  - name: gate.totalEventsLastHour
+    endpoint: /health
+    json_path: totalEventsLastHour
+    min_delta_per_hour: 100
+    severity: ORANGE
+    failure_window_minutes: 10
+
+  # L1 GATE: Individual ingestor heartbeat via sub-registry in /health response
+  # Each ingestor (/health endpoint) should respond within 15s.
+  # If any ingestor is down for >15min, escalate to ORANGE per-ingestor.
+  # If >50% of known fleet (>7 of 13) are down, RED fleet-wide.
+
+probes:
+  # TIER 1: Ingestion Gate aggregate (60s polling)
+  - name: gate-health
+    endpoint: /health
+    port: 8700
+    interval_seconds: 60
+    timeout_seconds: 5
+    expected_status: 200
+    severity: CRITICAL
+
+# TIER 3: Individual ingestor liveness checks (300s polling)
+# Known ingestors (ports from stack-map.md Batch 1 + early live stack):
+ingestors:
+  - name: Bitstamp
+    port: 8530
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Binance
+    port: 8525
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Kraken
+    port: 8526
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Gateio
+    port: 8527
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Bybit
+    port: 8528
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: OKX
+    port: 8529
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Coinbase
+    port: 8531
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Poloniex
+    port: 8540
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: LBank
+    port: 8543
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: CoinEx
+    port: 8546
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: Bitrue
+    port: 8542
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: BitMart
+    port: 8539
+    interval_seconds: 300
+    timeout_seconds: 5
+
+  - name: BingX
+    port: 8544
+    interval_seconds: 300
+    timeout_seconds: 5
+
+# THRESHOLDS
+thresholds:
+  gate_events_red: 0          # RED if no events in last hour
+  gate_events_orange: 100     # ORANGE if < 100 events/hour (12s/event on average)
+  ingestor_silent_window_minutes: 15  # ORANGE if ingestor unresponsive >15min
+  fleet_degradation_percent: 50       # RED if >50% of fleet down (>7 of 13)
+
+e2e: []
