@@ -34,36 +34,90 @@ const promotion = new PromotionService();
 const loaded = registry.loadSignaturesFromDir(SIG_DIR);
 console.log(`[checksum] loaded ${loaded} signatures from ${SIG_DIR}`);
 
-// --- internal loops ---
-// L1 — every 30s
-setInterval(() => {
-  process_.pollAll().catch((e) => console.error("[L1] pollAll error:", e));
-}, 30_000);
+// --- internal loops (stoppable/restartable for v1.0 escalations) ---
+let l1Handle: NodeJS.Timeout | null = null;
+let l3Handle: NodeJS.Timeout | null = null;
+let verifierHandle: NodeJS.Timeout | null = null;
+let deadmanHandle: NodeJS.Timeout | null = null;
 
-// L3 — every 60s
-setInterval(() => {
-  delta.pollAll().catch((e) => console.error("[L3] pollAll error:", e));
-}, 60_000);
+function startLoops(): void {
+  if (l1Handle) clearInterval(l1Handle);
+  l1Handle = setInterval(() => {
+    process_.pollAll().catch((e) => console.error("[L1] pollAll error:", e));
+  }, 30_000);
 
-// Verifier — every 10s. Refresh L2/L3 from observation, decide state, fire escalations.
-setInterval(() => {
-  try {
-    heartbeat.refresh();
-    delta.refresh();
-    verifier.tick();
-  } catch (e) {
-    console.error("[verifier] tick error:", e);
+  if (l3Handle) clearInterval(l3Handle);
+  l3Handle = setInterval(() => {
+    delta.pollAll().catch((e) => console.error("[L3] pollAll error:", e));
+  }, 60_000);
+
+  if (verifierHandle) clearInterval(verifierHandle);
+  verifierHandle = setInterval(() => {
+    try {
+      heartbeat.refresh();
+      delta.refresh();
+      verifier.tick();
+    } catch (e) {
+      console.error("[verifier] tick error:", e);
+    }
+  }, 10_000);
+
+  if (deadmanHandle) clearInterval(deadmanHandle);
+  deadmanHandle = setInterval(() => {
+    deadman.beat().catch((e) => console.error("[deadman] beat error:", e));
+  }, 30_000);
+}
+
+// DECISION: Exposed restart function for /admin/loop/restart endpoint.
+// Production-grade: idempotent, clears existing handles, restarts fresh.
+async function restartPollingLoops(): Promise<void> {
+  console.log("[escalation] RESTART: clearing existing loops");
+  [l1Handle, l3Handle, verifierHandle, deadmanHandle].forEach(h => h && clearInterval(h));
+  l1Handle = l3Handle = verifierHandle = deadmanHandle = null;
+  console.log("[escalation] RESTART: restarting loops");
+  startLoops();
+  console.log("[escalation] RESTART: loops restarted successfully");
+}
+
+// DECISION: Rail controller halt function. Uses env var RAIL_CONTROLLER_URL.
+// Defaults to log-only if env var unset (safe for local dev). Production: must set env.
+async function haltRailController(reason: string): Promise<void> {
+  const railUrl = process.env.RAIL_CONTROLLER_URL;
+  if (!railUrl) {
+    console.warn(`[escalation] HALT: RAIL_CONTROLLER_URL not set, logging halt intent only: ${reason}`);
+    return;
   }
-}, 10_000);
+  try {
+    const fetch = (await import("node-fetch")).default;
+    const response = await fetch(`${railUrl}/halt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "halt", reason }),
+      timeout: 5000,
+    });
+    if (!response.ok) {
+      console.error(`[escalation] HALT: rail-controller returned ${response.status}`);
+      throw new Error(`HTTP ${response.status}`);
+    }
+    console.log(`[escalation] HALT: rail-controller halted with reason: ${reason}`);
+  } catch (e) {
+    console.error(`[escalation] HALT: failed to reach rail-controller: ${e instanceof Error ? e.message : "unknown"}`);
+    throw e;
+  }
+}
 
-// Dead-man heartbeat OUT — every 30s
-setInterval(() => {
-  deadman.beat().catch((e) => console.error("[deadman] beat error:", e));
-}, 30_000);
+// Wire escalation dependencies
+escalation.setDependencies({
+  restartPollingLoop: restartPollingLoops,
+  haltRailController: haltRailController,
+});
 
 // --- prime once on boot ---
 process_.pollAll().catch(() => {});
 delta.pollAll().catch(() => {});
+
+// --- start loops ---
+startLoops();
 
 // --- Express server ---
 const app = express();
@@ -216,6 +270,21 @@ app.post("/checksum/test/deadman/result", (req, res) => {
   const success = req.body && req.body.success === true;
   promotion.recordDeadmanTest(success);
   res.json({ ok: true, recorded: success, state: promotion.read() });
+});
+
+// v1.0 Escalation endpoint: restart polling loops (called by ORANGE escalation)
+// DECISION: No auth required (assumes CHECKSUM runs in protected network).
+// This endpoint restarts L1, L3, verifier, and deadman loops after corruption or hang.
+app.post("/admin/loop/restart", async (_req, res) => {
+  try {
+    console.log(`[admin] /admin/loop/restart called`);
+    await restartPollingLoops();
+    res.json({ ok: true, message: "All polling loops restarted" });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unknown error";
+    console.error(`[admin] /admin/loop/restart failed: ${msg}`);
+    res.status(500).json({ ok: false, error: msg });
+  }
 });
 
 app.listen(PORT, () => {

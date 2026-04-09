@@ -44,27 +44,36 @@ counters:
   # Watching dead counters that we know are dead is alarm fatigue, not signal.
   #
   # Campaign Simulator proxies — these are the v7.0 wargame outputs (4-regime
-  # PASS/FAIL with survival + PnL). Real observed rates from 2026-04-07 evening:
-  #   totalScenarios:        ~6/hr  (much lower than initial estimate)
-  #   totalSelfPlaySessions: ~2/hr
-  # Threshold set to 1/hour — any incrementing = healthy. Tier 2 cleanup will
-  # review whether the campaign loop should run faster (currently every ~30s
-  # but only some campaigns produce a NEW scenario; most reuse existing ones).
+  # PASS/FAIL with survival + PnL).
+  #
+  # 2026-04-09 RETUNE: yesterday's GENESIS-PHANTOM-FORGE buffer-cap bug fix
+  # revealed that the TRUE Forge production rates are far higher than the
+  # buffer-capped rates CHECKSUM was previously calibrated against. Old
+  # observed rates (capped / pre-fix) vs NEW true rates (post-fix):
+  #   totalScenarios:        ~10/hr  →  ~83/hr  (8.3×)
+  #   totalSelfPlaySessions: ~2/hr   →  ~11/hr  (5.5×)
+  #   totalShadowTrades:     ~500/hr →  ~893/hr (1.8×, was hard-capped at 500)
+  # Floors set to ~70% of NEW true rate (±30% band, min side) so CHECKSUM
+  # detects a real regression against truth — NOT against the old buffer-
+  # capped rates. The previous 1/hour floors were alarm-dead: they would
+  # only catch total loop death, not a 5× silent degradation.
   - name: stats.totalScenarios
     endpoint: /health
     json_path: stats.totalScenarios
-    min_delta_per_hour: 1
+    min_delta_per_hour: 58
   - name: stats.totalSelfPlaySessions
     endpoint: /health
     json_path: stats.totalSelfPlaySessions
-    min_delta_per_hour: 1
-  # NOTE on stats.totalShadowTrades: Currently CAPPED AT 500 — looks like a
-  # hard buffer ceiling in Forge's shadow pipeline. Once 500 trades accumulate
-  # the counter freezes. This is a SECOND real finding from tonight's
-  # deployment debugging — filed as Tier 2 backlog ("Forge shadow trade buffer
-  # ceiling investigation"). Removing from active monitoring because a frozen
-  # counter would generate false alarms forever; the bug is documented
-  # elsewhere and will be fixed separately.
+    min_delta_per_hour: 8
+  # stats.totalShadowTrades: RESTORED to active monitoring 2026-04-09. The
+  # buffer-cap bug that previously froze this counter at 500 was fixed in
+  # GENESIS-PHANTOM-FORGE yesterday. True rate is ~893/hr. Floor 625/hr
+  # (~70% of truth) catches any regression back toward the old capped
+  # regime or a real shadow-pipeline stall.
+  - name: stats.totalShadowTrades
+    endpoint: /health
+    json_path: stats.totalShadowTrades
+    min_delta_per_hour: 625
 
 # E2E probes deferred to v0.2 — Forge needs a /shadow/probe/inject endpoint first
 e2e: []
