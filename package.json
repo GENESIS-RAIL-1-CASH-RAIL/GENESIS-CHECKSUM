@@ -2,12 +2,12 @@
   "name": "genesis-checksum",
   "version": "0.1.0",
   "description": "Behavioural integrity watchdog. Verifies the work is actually happening, not just that the process is alive.",
-  "main": "dist/index.js",
+  "main": "dist/bootstrap.js",
   "scripts": {
     "build": "tsc",
     "postbuild": "mkdir -p dist/signatures && cp -r src/signatures/* dist/signatures/",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
+    "start": "node dist/bootstrap.js",
+    "dev": "ts-node src/bootstrap.ts",
     "deadman": "node deadman/deadman.js"
   },
   "dependencies": {

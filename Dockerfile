@@ -23,4 +23,4 @@ RUN npm prune --omit=dev
 EXPOSE 8898
 
 # Run the compiled output
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/bootstrap.js"]

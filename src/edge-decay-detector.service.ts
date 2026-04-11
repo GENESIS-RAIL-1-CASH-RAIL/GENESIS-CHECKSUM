@@ -27,9 +27,9 @@ export class EdgeDecayDetectorService {
   private lastAlertTs: Map<string, number> = new Map();
 
   // Thresholds
-  private readonly windowSize: number = 100; // samples
-  private readonly slopeThreshold: number = -0.01; // -1% per day triggers alert
-  private readonly rSquaredThreshold: number = 0.5; // must be genuine trend (R² > 0.5)
+  private windowSize: number = 100; // samples
+  private slopeThreshold: number = -0.01; // -1% per day triggers alert
+  private rSquaredThreshold: number = 0.5; // must be genuine trend (R² > 0.5)
   private readonly alertCooldown: number = 60 * 60 * 1000; // 1 hour between alerts
 
   constructor(
